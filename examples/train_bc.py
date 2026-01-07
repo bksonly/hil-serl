@@ -35,7 +35,7 @@ flags.DEFINE_bool("save_video", False, "Save video of the evaluation.")
 
 
 flags.DEFINE_boolean(
-    "debug", False, "Debug mode."
+    "debug", True, "Debug mode."
 )  # debug mode will disable wandb logging
 
 

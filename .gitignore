@@ -1,0 +1,55 @@
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtualenv / environments
+.env
+.venv
+env/
+venv/
+
+# Python packaging / build
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Logs / caches / coverage
+*.log
+.mypy_cache/
+.pytest_cache/
+.cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Data / artifacts (adjust as needed)
+*.pkl
+*.npz
+*.npy
+*.hdf5
+*.h5
+*.ckpt
+*.pt
+*.pth
+wandb/
+
+# Media
+*.mp4
+*.mov
+*.avi
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+serl_robot_infra/xarm_env/BestMan_Xarm/xArm-Python-SDK/
