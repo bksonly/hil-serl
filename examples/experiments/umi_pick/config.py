@@ -33,12 +33,23 @@ class TrainConfig(DefaultTrainingConfig):
     image_keys = ["image"]
     # Proprio keys consistent with XArmEnv observation dict
     proprio_keys = ["tcp_pose", "tcp_vel", "gripper_pose"]
-    # Use learned gripper mode (continuous gripper)
-    setup_mode = "single-arm-learned-gripper"
+    # Use fixed-gripper mode: gripper as continuous action (not discrete {-1,0,1})
+    # Note: "fixed" here means "not using discrete grasp_critic", not "gripper is fixed"
+    setup_mode = "single-arm-fixed-gripper"
     encoder_type = "resnet-pretrained"
     checkpoint_period = 2000
     buffer_period = 1000
     random_steps = 0
+    
+    # RL training parameters
+    max_steps = 100
+    training_starts = 1000  # Minimum buffer size before starting training
+    batch_size = 256
+    cta_ratio = 2  # Critic-to-actor update ratio
+    discount = 0.97
+    steps_per_update = 50
+    log_period = 10
+    replay_buffer_capacity = 200000
 
     def get_environment(self, fake_env=False, save_video=False, classifier=False):
         env = UmiPickXArmEnv(
@@ -50,4 +61,12 @@ class TrainConfig(DefaultTrainingConfig):
         env = SERLObsWrapper(env, proprio_keys=self.proprio_keys)
         env = ChunkingWrapper(env, obs_horizon=1, act_exec_horizon=None)
         return env
+    
+    def process_demos(self, demo):
+        """
+        Process demonstration data if needed.
+        For UMI data that's already converted via convert_hdf5_to_pkl.py,
+        no additional processing is needed.
+        """
+        return demo
 

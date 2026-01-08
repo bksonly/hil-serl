@@ -46,6 +46,7 @@ flags.DEFINE_string("checkpoint_path", None, "Path to save checkpoints.")
 flags.DEFINE_integer("eval_checkpoint_step", 0, "Step to evaluate the checkpoint.")
 flags.DEFINE_integer("eval_n_trajs", 0, "Number of trajectories to evaluate.")
 flags.DEFINE_boolean("save_video", False, "Save video.")
+flags.DEFINE_boolean("offline", False, "Whether to run in offline mode (only use demo data, no actor).")
 
 flags.DEFINE_boolean(
     "debug", False, "Debug mode."
@@ -261,45 +262,56 @@ def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None):
             wandb_logger.log(payload, step=step)
         return {}  # not expecting a response
 
-    # Create server
-    server = TrainerServer(make_trainer_config(), request_callback=stats_callback)
-    server.register_data_store("actor_env", replay_buffer)
-    server.register_data_store("actor_env_intvn", demo_buffer)
-    server.start(threaded=True)
+    # Create server (only needed for online mode)
+    if not FLAGS.offline:
+        server = TrainerServer(make_trainer_config(), request_callback=stats_callback)
+        server.register_data_store("actor_env", replay_buffer)
+        server.register_data_store("actor_env_intvn", demo_buffer)
+        server.start(threaded=True)
 
-    # Loop to wait until replay_buffer is filled
-    pbar = tqdm.tqdm(
-        total=config.training_starts,
-        initial=len(replay_buffer),
-        desc="Filling up replay buffer",
-        position=0,
-        leave=True,
-    )
-    while len(replay_buffer) < config.training_starts:
+        # Loop to wait until replay_buffer is filled (online mode only)
+        pbar = tqdm.tqdm(
+            total=config.training_starts,
+            initial=len(replay_buffer),
+            desc="Filling up replay buffer",
+            position=0,
+            leave=True,
+        )
+        while len(replay_buffer) < config.training_starts:
+            pbar.update(len(replay_buffer) - pbar.n)  # Update progress bar
+            time.sleep(1)
         pbar.update(len(replay_buffer) - pbar.n)  # Update progress bar
-        time.sleep(1)
-    pbar.update(len(replay_buffer) - pbar.n)  # Update progress bar
-    pbar.close()
+        pbar.close()
 
-    # send the initial network to the actor
-    server.publish_network(agent.state.params)
-    print_green("sent initial network to actor")
+        # send the initial network to the actor
+        server.publish_network(agent.state.params)
+        print_green("sent initial network to actor")
 
-    # 50/50 sampling from RLPD, half from demo and half from online experience
-    replay_iterator = replay_buffer.get_iterator(
-        sample_args={
-            "batch_size": config.batch_size // 2,
-            "pack_obs_and_next_obs": True,
-        },
-        device=sharding.replicate(),
-    )
-    demo_iterator = demo_buffer.get_iterator(
-        sample_args={
-            "batch_size": config.batch_size // 2,
-            "pack_obs_and_next_obs": True,
-        },
-        device=sharding.replicate(),
-    )
+        # 50/50 sampling from RLPD, half from demo and half from online experience
+        replay_iterator = replay_buffer.get_iterator(
+            sample_args={
+                "batch_size": config.batch_size // 2,
+                "pack_obs_and_next_obs": True,
+            },
+            device=sharding.replicate(),
+        )
+        demo_iterator = demo_buffer.get_iterator(
+            sample_args={
+                "batch_size": config.batch_size // 2,
+                "pack_obs_and_next_obs": True,
+            },
+            device=sharding.replicate(),
+        )
+    else:
+        # Offline mode: only sample from demo_buffer
+        print_green("Running in offline mode: sampling only from demo_buffer")
+        demo_iterator = demo_buffer.get_iterator(
+            sample_args={
+                "batch_size": config.batch_size,
+                "pack_obs_and_next_obs": True,
+            },
+            device=sharding.replicate(),
+        )
 
     # wait till the replay buffer is filled with enough data
     timer = Timer()
@@ -318,9 +330,14 @@ def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None):
         # This makes training on GPU faster by reducing the large batch transfer time from CPU to GPU
         for critic_step in range(config.cta_ratio - 1):
             with timer.context("sample_replay_buffer"):
-                batch = next(replay_iterator)
-                demo_batch = next(demo_iterator)
-                batch = concat_batches(batch, demo_batch, axis=0)
+                if FLAGS.offline:
+                    # Offline mode: only sample from demo_buffer
+                    batch = next(demo_iterator)
+                else:
+                    # Online mode: 50/50 from replay_buffer and demo_buffer
+                    batch = next(replay_iterator)
+                    demo_batch = next(demo_iterator)
+                    batch = concat_batches(batch, demo_batch, axis=0)
 
             with timer.context("train_critics"):
                 agent, critics_info = agent.update(
@@ -329,15 +346,20 @@ def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None):
                 )
 
         with timer.context("train"):
-            batch = next(replay_iterator)
-            demo_batch = next(demo_iterator)
-            batch = concat_batches(batch, demo_batch, axis=0)
+            if FLAGS.offline:
+                # Offline mode: only sample from demo_buffer
+                batch = next(demo_iterator)
+            else:
+                # Online mode: 50/50 from replay_buffer and demo_buffer
+                batch = next(replay_iterator)
+                demo_batch = next(demo_iterator)
+                batch = concat_batches(batch, demo_batch, axis=0)
             agent, update_info = agent.update(
                 batch,
                 networks_to_update=train_networks_to_update,
             )
-        # publish the updated network
-        if step > 0 and step % (config.steps_per_update) == 0:
+        # publish the updated network (online mode only)
+        if not FLAGS.offline and step > 0 and step % (config.steps_per_update) == 0:
             agent = jax.block_until_ready(agent)
             server.publish_network(agent.state.params)
 
@@ -466,17 +488,19 @@ def main(_):
         print_green(f"demo buffer size: {len(demo_buffer)}")
         print_green(f"online buffer size: {len(replay_buffer)}")
 
-        if FLAGS.checkpoint_path is not None and os.path.exists(
-            os.path.join(FLAGS.checkpoint_path, "buffer")
-        ):
-            for file in glob.glob(os.path.join(FLAGS.checkpoint_path, "buffer/*.pkl")):
-                with open(file, "rb") as f:
-                    transitions = pkl.load(f)
-                    for transition in transitions:
-                        replay_buffer.insert(transition)
-            print_green(
-                f"Loaded previous buffer data. Replay buffer size: {len(replay_buffer)}"
-            )
+        # Online mode: load previous replay buffer data if exists
+        if not FLAGS.offline:
+            if FLAGS.checkpoint_path is not None and os.path.exists(
+                os.path.join(FLAGS.checkpoint_path, "buffer")
+            ):
+                for file in glob.glob(os.path.join(FLAGS.checkpoint_path, "buffer/*.pkl")):
+                    with open(file, "rb") as f:
+                        transitions = pkl.load(f)
+                        for transition in transitions:
+                            replay_buffer.insert(transition)
+                print_green(
+                    f"Loaded previous buffer data. Replay buffer size: {len(replay_buffer)}"
+                )
 
         if FLAGS.checkpoint_path is not None and os.path.exists(
             os.path.join(FLAGS.checkpoint_path, "demo_buffer")
