@@ -129,6 +129,7 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
         wait_for_server=True,
         timeout_ms=3000,
     )
+    print_green(f"Actor connected to learner at {FLAGS.ip}")
 
     # Function to update the agent with new params
     def update_params(params):
@@ -202,6 +203,10 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
                 intvn_data_store.insert(transition)
                 demo_transitions.append(copy.deepcopy(transition))
 
+            # Sync data to learner after each step (not just at episode end)
+            # This ensures data is sent to learner in real-time
+            client.update()
+
             obs = next_obs
             if done or truncated:
                 info["episode"]["intervention_count"] = intervention_count
@@ -213,7 +218,6 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
                 intervention_count = 0
                 intervention_steps = 0
                 already_intervened = False
-                client.update()
                 obs, _ = env.reset()
 
         if step > 0 and config.buffer_period > 0 and step % config.buffer_period == 0:

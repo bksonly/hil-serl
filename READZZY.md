@@ -1,5 +1,7 @@
+BC训练
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl python examples/train_bc.py   --exp_name=umi_pick   --bc_checkpoint_path=/home/ubuntu/Documents/data/pick1/bc_ckpts
 
+离线RL
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl \
 python examples/train_rlpd.py \
   --exp_name=umi_pick \
@@ -8,6 +10,30 @@ python examples/train_rlpd.py \
   --demo_path=/home/ubuntu/Desktop/hil-serl/demo_data/pick_parallel.pkl \
   --checkpoint_path=/home/ubuntu/Documents/data/pick1/rlpd_ckpts \
   --debug=True
+
+Actor推理
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl \
+python examples/train_rlpd.py \
+    --exp_name=umi_pick \
+    --actor \
+    --eval_checkpoint_step=10 \
+    --eval_n_trajs=5 \
+    --checkpoint_path=/home/ubuntu/Documents/data/pick1/rlpd_ckpts
+
+在线RL
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl \
+python examples/train_rlpd.py \
+  --exp_name=umi_pick \
+  --learner \
+  --demo_path=/home/ubuntu/Desktop/hil-serl/demo_data/pick_parallel.pkl \
+  --checkpoint_path=/home/ubuntu/Documents/data/pick1/rlpd_ckpts \
+  --debug=True
+
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl \
+python examples/train_rlpd.py \
+  --exp_name=umi_pick \
+  --actor 
+
 
 conda create -n hilserl_cpu python=3.10
 
@@ -21,3 +47,5 @@ python3 setup.py install
 
 pip install -e serl_launcher
 pip install -e serl_robot_infra
+
+

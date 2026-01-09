@@ -14,7 +14,7 @@ class EnvConfig(XArmEnvConfig):
     """Task-specific overrides for umi_pick on XArm."""
 
     # Override IP / camera port as needed
-    ROBOT_IP: str = "192.168.1.240"
+    ROBOT_IP: str = "192.168.1.224"
     LOCAL_IP = None
     CAMERA_PORT: int = 0
 
@@ -37,13 +37,13 @@ class TrainConfig(DefaultTrainingConfig):
     # Note: "fixed" here means "not using discrete grasp_critic", not "gripper is fixed"
     setup_mode = "single-arm-fixed-gripper"
     encoder_type = "resnet-pretrained"
-    checkpoint_period = 2000
+    checkpoint_period = 10
     buffer_period = 1000
     random_steps = 0
     
     # RL training parameters
-    max_steps = 100
-    training_starts = 1000  # Minimum buffer size before starting training
+    max_steps = 2000
+    training_starts = 5  # Minimum buffer size before starting training
     batch_size = 256
     cta_ratio = 2  # Critic-to-actor update ratio
     discount = 0.97

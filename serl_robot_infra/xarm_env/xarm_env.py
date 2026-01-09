@@ -24,11 +24,23 @@ For now, we:
 
 import time
 from typing import Dict, Tuple, Optional
+import logging
 
 import cv2
 import gymnasium as gym
 import numpy as np
 from scipy.spatial.transform import Rotation
+
+# Configure logger for camera timeout warnings
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        '\033[91m[CAMERA TIMEOUT]\033[0m %(message)s'  # Red color for timeout warnings
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
 
 from serl_robot_infra.xarm_env.BestMan_Xarm.RoboticsToolBox.Bestman_real_xarm6 import (
     Bestman_Real_Xarm6,
@@ -39,7 +51,7 @@ class XArmEnvConfig:
     """Configuration for XArmEnv (kept simple for now)."""
 
     # Robot & gripper
-    ROBOT_IP: str = "192.168.1.240"
+    ROBOT_IP: str = "192.168.1.224"
     LOCAL_IP: Optional[str] = None
     FREQUENCY: int = 10  # Hz, not strictly used but kept for compatibility
 
@@ -192,8 +204,9 @@ class XArmEnv(gym.Env):
         """Initialize a single OpenCV camera."""
         self._camera = cv2.VideoCapture(self.config.CAMERA_PORT)
         # Try to set a reasonable resolution; we will resize to 128x128 anyway.
+        self._camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self._camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 1280)
         # Warm-up frames
         for _ in range(5):
             self._camera.grab()
@@ -245,6 +258,20 @@ class XArmEnv(gym.Env):
         self._last_state = obs
         return obs
 
+    def _print_action_info(self, target_pos: np.ndarray, target_rpy: np.ndarray, gripper_normalized: float):
+        """Print action information in a concise format.
+        
+        Args:
+            target_pos: Target position [x, y, z] in meters
+            target_rpy: Target orientation [roll, pitch, yaw] in degrees
+            gripper_normalized: Gripper value in [0, 1] where 0=closed, 1=open
+        """
+        print(
+            f"Action: Pos[{target_pos[0]:.3f}, {target_pos[1]:.3f}, {target_pos[2]:.3f}]m | "
+            f"Orient[{target_rpy[0]:.2f}, {target_rpy[1]:.2f}, {target_rpy[2]:.2f}]deg | "
+            f"Gripper[{gripper_normalized:.3f}]"
+        )
+
     def _execute_action(self, action: np.ndarray):
         """Convert normalized action into real robot command."""
         if self._robot is None:
@@ -272,16 +299,24 @@ class XArmEnv(gym.Env):
         # 5) Gripper update (keep in [-1,1])
         next_gripper = float(np.clip(gripper_pose + gripper_delta, -1.0, 1.0))
 
-        # 6) Send commands
-        # Convert quaternion to euler (roll, pitch, yaw) in radians
-        rpy = next_rot.as_euler("xyz", degrees=False)
+        # 6) Convert quaternion to euler (roll, pitch, yaw) in degrees for printing
+        rpy_rad = next_rot.as_euler("xyz", degrees=False)
+        rpy_deg = np.degrees(rpy_rad)
+
+        # 7) Convert gripper from [-1,1] to [0,1] where 0=closed, 1=open
+        gripper_0to1 = (next_gripper + 1.0) / 2.0
+
+        # 8) Print action information
+        self._print_action_info(target_pos, rpy_deg, gripper_0to1)
+
+        # 9) Send commands (still use radians for robot command)
         target_pose_euler = [
             float(target_pos[0]),
             float(target_pos[1]),
             float(target_pos[2]),
-            float(rpy[0]),
-            float(rpy[1]),
-            float(rpy[2]),
+            float(rpy_rad[0]),
+            float(rpy_rad[1]),
+            float(rpy_rad[2]),
         ]
         self._send_pos_command(target_pose_euler)
         self._send_gripper_command(next_gripper)
@@ -353,6 +388,10 @@ class XArmEnv(gym.Env):
             return np.zeros(1, dtype=np.float32)
 
     def _get_images(self) -> Dict[str, np.ndarray]:
+        image = np.zeros((128, 128, 3), dtype=np.uint8)
+        return {"image": image}
+
+        
         """Get a single RGB image, resized to 128x128."""
         if self._camera is None:
             image = np.zeros((128, 128, 3), dtype=np.uint8)
