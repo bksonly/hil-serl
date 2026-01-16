@@ -24,15 +24,13 @@ from serl_robot_infra.xarm_env.BestMan_Xarm.RoboticsToolBox.Bestman_real_xarm6 i
 class UMITeleop:
     """使用 UMI 夹爪的 delta pose 控制 xarm 机械臂。"""
     
-    def __init__(self, robot_ip, local_ip=None, config_path=None, pose_queue_size=5, 
-                 max_pos_delta=0.05, max_rot_delta=0.5, frequency=100):
+    def __init__(self, robot_ip, pose_queue_size, 
+                 max_pos_delta, max_rot_delta, frequency):
         """
         初始化遥操作系统。
         
         Args:
             robot_ip: xarm 机械臂的 IP 地址
-            local_ip: 本地 IP 地址（可选）
-            config_path: UMI config.json 文件路径
             pose_queue_size: pose 队列大小
             max_pos_delta: 最大位置增量（米），用于安全限幅
             max_rot_delta: 最大旋转增量（弧度），用于安全限幅
@@ -42,12 +40,10 @@ class UMITeleop:
         rospy.init_node('umi_teleop', anonymous=True)
         
         # 初始化 UMI Expert
-        self.umi_expert = UMIExpert(config_path=config_path, pose_queue_size=pose_queue_size)
+        self.umi_expert = UMIExpert(pose_queue_size=pose_queue_size)
         
         # 初始化 xarm（使用 Bestman 封装）
         self.robot_ip = robot_ip
-        self.local_ip = local_ip
-        self.frequency = frequency
         self.robot = None
         self._init_xarm()
         
@@ -78,8 +74,8 @@ class UMITeleop:
         # 使用 Bestman 封装初始化，servo_mode=True
         self.robot = Bestman_Real_Xarm6(
             self.robot_ip,
-            self.local_ip,
-            self.frequency,
+            None,
+            None,
             servo_mode=True
         )
         
@@ -218,8 +214,6 @@ class UMITeleop:
                 
                 # 更新当前位姿
                 self.current_pose = current_pose
-                # print(f"current_pose: {self.current_pose}")
-                # 获取 UMI delta pose
                 delta = self.umi_expert.get_pose_delta()
                 
                 # 获取当前夹爪值
@@ -301,19 +295,16 @@ def main():
     """主函数。"""
     # ========== 配置参数（直接在这里修改） ==========
     ROBOT_IP = "192.168.1.224"  # xarm 机械臂 IP 地址
-    LOCAL_IP = None  # 本地 IP 地址（可选，默认 None）
-    CONFIG_PATH = None  # UMI config.json 文件路径（None 使用默认路径）
-    POSE_QUEUE_SIZE = 5  # pose 队列大小
-    MAX_POS_DELTA = 0.001  # 最大位置增量（米），用于安全限幅
-    MAX_ROT_DELTA = 0.02  # 最大旋转增量（弧度），用于安全限幅
     FREQUENCY = 100  # 控制频率（Hz）
+    POSE_QUEUE_SIZE = int(500/FREQUENCY + 1) # pose 队列大小
+    MAX_POS_DELTA = 0.003  # 最大位置增量（米），用于安全限幅
+    MAX_ROT_DELTA = 0.02  # 最大旋转增量（弧度），用于安全限幅
+    
     # ============================================
     
     try:
         teleop = UMITeleop(
             robot_ip=ROBOT_IP,
-            local_ip=LOCAL_IP,
-            config_path=CONFIG_PATH,
             pose_queue_size=POSE_QUEUE_SIZE,
             max_pos_delta=MAX_POS_DELTA,
             max_rot_delta=MAX_ROT_DELTA,

@@ -11,22 +11,13 @@ from scipy.spatial.transform import Rotation as R
 
 
 class UMIExpert:
-    """接收 UMI 夹爪的位姿和夹爪数据，维护 pose 队列和当前 clamp 值。"""
+    """接收 UMI rostopic，维护 pose 队列和当前 clamp 值。"""
     
-    def __init__(self, config_path=None, pose_queue_size=5):
-        """
-        初始化 UMIExpert。
-        
-        Args:
-            config_path: config.json 文件路径，如果为 None 则使用默认路径
-            pose_queue_size: pose 队列大小，默认 5
-        """
-        # 加载配置
-        if config_path is None:
-            # 默认路径：相对于当前文件的 start_process/config.json
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            config_path = os.path.join(current_dir, "start_process", "config.json")
-        
+    def __init__(self, pose_queue_size):
+        # 默认路径：相对于当前文件的 start_process/config.json
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(current_dir, "start_process", "config.json")
+    
         with open(config_path, 'r') as f:
             config = json.load(f)
         
@@ -61,7 +52,6 @@ class UMIExpert:
 
     def transform_to_base_quat(self, x, y, z, qx, qy, qz, qw, T_base_to_local):
         '''transform the pose of fastumi to robot base, returns quaternion'''
-        # 确保 T_base_to_local 是 numpy 数组
         T_base_to_local = np.array(T_base_to_local)
         
         rotation_local = R.from_quat([qx, qy, qz, qw]).as_matrix()
@@ -80,8 +70,6 @@ class UMIExpert:
     def _pose_callback(self, msg):
         """回调函数：处理接收到的 pose 消息并存入队列。"""
         try:
-            # 从 PoseStampedConfidence 中提取 pose 数据
-            # msg.poseMsg 是 geometry_msgs/PoseStamped 类型
             pose_msg = msg.poseMsg
             T_base2local = np.array([[ 0.    ,  0.        ,  1.      ,  0.  ],
                                      [ -1.    ,  0.       ,  0.      ,  0.   ],
@@ -106,8 +94,7 @@ class UMIExpert:
                 'confidence': msg.confidence,
                 'timestamp': pose_msg.header.stamp.to_sec()
             }
-            # print(f"umi pose: {pose_data['position']['x']:.3f}, {pose_data['position']['y']:.3f}, {pose_data['position']['z']:.3f}")
-            # 存入队列（线程安全）
+            # 存入队列
             with self.pose_lock:
                 self.pose_queue.append(pose_data)
         except Exception as e:
@@ -123,8 +110,6 @@ class UMIExpert:
     
     def get_pose_queue(self):
         """
-        获取当前 pose 队列的副本。
-        
         Returns:
             list: pose 数据列表（从旧到新）
         """
@@ -132,12 +117,6 @@ class UMIExpert:
             return list(self.pose_queue)
     
     def get_latest_pose(self):
-        """
-        获取最新的 pose。
-        
-        Returns:
-            dict: 最新的 pose 数据，如果队列为空则返回 None
-        """
         with self.pose_lock:
             if len(self.pose_queue) > 0:
                 return self.pose_queue[-1]
