@@ -26,15 +26,25 @@ class Bestman_Real_Xarm6:
     # Functions for initalization
     # ----------------------------------------------------------------
 
-    def __init__(self, robot_ip, local_ip, frequency):
+    def __init__(self, robot_ip, local_ip, frequency, servo_mode=False):
         # Initialize the robot and gripper with the provided IPs and frequency
         self.robot = XArmAPI(robot_ip)
         local_ip = None
-        self.mode = self.robot.set_mode(0) # 0: default
-        self.robot_states = self.robot.set_state(0)
+        self.robot.motion_enable(enable=True)
+        if servo_mode:
+            # Set servo mode for real-time control (like xarm_remote_control.py)
+            self.robot.set_mode(0)  # First set to position mode
+            self.robot.set_state(0)
+            self.robot.set_mode(1)  # Then switch to servo mode
+            self.robot.set_state(0)
+            self.mode = 1
+        else:
+            self.mode = self.robot.set_mode(0) # 0: default position mode
+            self.robot_states = self.robot.set_state(0)
         self.first_init_flag = True
         self.gripper = True # have gripper by default
         self.frequency = frequency
+        self.servo_mode = servo_mode
         
         # 新增: 用于存储 USB 直连的 gripper 对象
         self.usb_gripper = None
@@ -315,6 +325,36 @@ class Bestman_Real_Xarm6:
                                                                         _velocity_setpoint[4],
                                                                         _velocity_setpoint[5]],
                                                                         duration=_duration)
+
+    def set_servo_cartesian(self, pose, is_radian=True, speed=100, mvacc=2000):
+        '''
+        Set servo cartesian pose for real-time control (servo mode).
+        Matches the interface used in xarm_remote_control.py reference code.
+        
+        Args:
+            pose: [x, y, z, roll, pitch, yaw] in meters (position) and radians (orientation)
+            is_radian: Whether angles are in radians
+            speed: Speed parameter (default 100, matching reference)
+            mvacc: Acceleration parameter (default 2000, matching reference)
+        '''
+        # Convert position from meters to millimeters (xArm uses mm)
+        # Reference: arm_sdk_adapter.py does pose[:3] = [p*1000 for p in pose[:3]]
+        x_mm = pose[0] * 1000
+        y_mm = pose[1] * 1000
+        z_mm = pose[2] * 1000
+        roll = pose[3]
+        pitch = pose[4]
+        yaw = pose[5]
+        
+        # Directly call robot.set_servo_cartesian (XArmAPI method)
+        # Reference: rollout_Xarm_replay_tcp_xvsion.py line 107
+        # bestman.robot.set_servo_cartesian(send_pose, speed=100, mvacc=2000)
+        self.robot.set_servo_cartesian(
+            [x_mm, y_mm, z_mm, roll, pitch, yaw],
+            speed=speed,
+            mvacc=mvacc,
+            is_radian=is_radian
+        )
 
     def move_end_effector_to_goal_pose(self, end_effector_goal_pose, is_radian=True, speed=10000, mvacc=500000, wait=False):
         '''

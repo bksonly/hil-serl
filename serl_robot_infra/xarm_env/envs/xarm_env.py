@@ -52,9 +52,8 @@ class XArmEnvConfig:
 
     # Robot & gripper
     ROBOT_IP: str = "192.168.1.224"
-    LOCAL_IP: Optional[str] = None
-    FREQUENCY: int = 10  # Hz, not strictly used but kept for compatibility
-
+    POS_FREQUENCY: int = 3  # Hz
+    SERVO_FREQUENCY: int = 50  # Hz
     # Camera: simple OpenCV VideoCapture port
     CAMERA_PORT: int = 0
 
@@ -62,11 +61,11 @@ class XArmEnvConfig:
     ACTION_SCALE: np.ndarray = np.array([0.015, 0.1, 1.0], dtype=np.float32)
 
     # Episode length
-    MAX_EPISODE_LENGTH: int = 100
+    MAX_EPISODE_LENGTH: int = 10000
 
     # Reset pose in task space: [x, y, z, roll, pitch, yaw] (meters, radians)
-    # Default to user-provided pick reset: [0.158, 0.28, 0.145, 180°, -90°, 0°]
-    RESET_POSE: np.ndarray = np.array([0.158, 0.28, 0.145, np.pi, -np.pi / 2.0, 0.0], dtype=np.float32)
+    # RESET_POSE: np.ndarray = np.array([0.158, 0.28, 0.145, np.pi, -np.pi / 2.0, 0.0], dtype=np.float32)
+    RESET_POSE: np.ndarray = np.array([0.4, -0.004, 0.1398, np.pi, -np.pi / 2.0, 0.0], dtype=np.float32) # user-provided pick reset: [0.158, 0.28, 0.145, 180°, -90°, 0°]
 
 
 class XArmEnv(gym.Env):
@@ -76,17 +75,14 @@ class XArmEnv(gym.Env):
 
     def __init__(
         self,
-        hz: int = 10,
         fake_env: bool = False,
         save_video: bool = False,
         config: Optional[XArmEnvConfig] = None,
     ):
         super().__init__()
-        self.hz = hz
-        self.dt = 1.0 / hz
-        self.fake_env = fake_env
-        self.save_video = save_video
         self.config = config or XArmEnvConfig()
+        self.fake_env = fake_env # learner使用fake
+        self.save_video = save_video
 
         self.action_scale = self.config.ACTION_SCALE.astype(np.float32)
         self.max_episode_length = self.config.MAX_EPISODE_LENGTH
@@ -154,18 +150,24 @@ class XArmEnv(gym.Env):
         info: Dict = {"succeed": False}
         return obs, info
 
-    def step(self, action: np.ndarray) -> Tuple[Dict, float, bool, bool, Dict]:
+    def step(self, action: np.ndarray, use_servo) -> Tuple[Dict, float, bool, bool, Dict]:
         """Standard gym step with normalized action."""
         start_time = time.time()
-
+        if use_servo:
+            self.dt = 1.0 / self.config.SERVO_FREQUENCY
+        else:
+            self.dt = 1.0 / self.config.POS_FREQUENCY
         action = np.asarray(action, dtype=np.float32)
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         if not self.fake_env:
-            self._execute_action(action)
+            self._execute_action(action, use_servo)
             # simple rate control
             elapsed = time.time() - start_time
-            time.sleep(max(0.0, self.dt - elapsed))
+            sleep_time = max(0.0, self.dt - elapsed)
+            time.sleep(sleep_time)
+            total_elapsed = (time.time() - start_time) * 1000
+            print(f"耗时: {elapsed*1000:.2f}ms, 总时长: {total_elapsed:.2f}ms")
 
         obs = self._get_obs()
         self.episode_steps += 1
@@ -195,10 +197,22 @@ class XArmEnv(gym.Env):
     def _init_robot_connection(self):
         """Initialize connection to XArm via Bestman_Real_Xarm6."""
         self._robot = Bestman_Real_Xarm6(
-            self.config.ROBOT_IP, self.config.LOCAL_IP, self.config.FREQUENCY
+            self.config.ROBOT_IP, 
+            None,  
+            None,
+            servo_mode=False  # 初始化时用 position mode，后续由 step 的 use_servo 参数控制
         )
         # Basic clear fault / go to default mode
         self._robot.clear_fault()
+        
+        # Initialize gripper (always needed)
+        try:
+            self._robot.robot.set_tgpio_modbus_baudrate(115200)
+            self._robot.robot.robotiq_reset()
+            self._robot.robot.robotiq_set_activate(True)
+            time.sleep(1.0)
+        except Exception as e:
+            logger.warning(f"Failed to initialize gripper: {e}")
 
     def _init_camera(self):
         """Initialize a single OpenCV camera."""
@@ -216,15 +230,18 @@ class XArmEnv(gym.Env):
         if self.fake_env or self._robot is None:
             return
 
+        # Reset always uses position mode (more reliable for moving to fixed pose)
+        # Switch to position mode for reset
+        self._robot.robot.set_mode(0)
+        self._robot.robot.set_state(0)
+        time.sleep(0.1)
+
         # Use Bestman API to move to RESET_POSE (x, y, z, roll, pitch, yaw)
         reset_pose = self.config.RESET_POSE.astype(float).tolist()
         self._robot.move_end_effector_to_goal_pose(reset_pose, is_radian=True, wait=True)
+        
         # Open gripper as default
-        try:
-            # robotiq command in [0,255], 0 closed / 255 open (in their code they map width)
-            self._robot.gripper_goto_robotiq(255, wait_motion=True)
-        except Exception:
-            pass
+        self._robot.gripper_goto_robotiq(0, wait_motion=True)
         time.sleep(0.5)
 
     # ------------------------------------------------------------------
@@ -258,29 +275,34 @@ class XArmEnv(gym.Env):
         self._last_state = obs
         return obs
 
-    def _print_action_info(self, target_pos: np.ndarray, target_rpy: np.ndarray, gripper_normalized: float):
-        """Print action information in a concise format.
-        
-        Args:
-            target_pos: Target position [x, y, z] in meters
-            target_rpy: Target orientation [roll, pitch, yaw] in degrees
-            gripper_normalized: Gripper value in [0, 1] where 0=closed, 1=open
-        """
-        print(
-            f"Action: Pos[{target_pos[0]:.3f}, {target_pos[1]:.3f}, {target_pos[2]:.3f}]m | "
-            f"Orient[{target_rpy[0]:.2f}, {target_rpy[1]:.2f}, {target_rpy[2]:.2f}]deg | "
-            f"Gripper[{gripper_normalized:.3f}]"
-        )
 
-    def _execute_action(self, action: np.ndarray):
+    def _execute_action(self, action: np.ndarray, use_servo: bool):
         """Convert normalized action into real robot command."""
         if self._robot is None:
             return
 
         # 1) De-normalize
+        # 检查 action 是否包含无效值
+        if not np.isfinite(action).all():
+            action = np.nan_to_num(action, nan=0.0, posinf=1.0, neginf=-1.0)
+        
+        # 检查 action_scale 是否有效
+        if not np.isfinite(self.action_scale).all():
+            raise ValueError(f"Invalid action_scale: {self.action_scale}")
+        
         xyz_delta = action[:3] * self.action_scale[0]
         rotvec_delta = action[3:6] * self.action_scale[1]
         gripper_delta = action[6] * self.action_scale[2]
+        
+        # 检查计算结果是否有效
+        if not np.isfinite(xyz_delta).all():
+            xyz_delta = np.nan_to_num(xyz_delta, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        if not np.isfinite(rotvec_delta).all():
+            rotvec_delta = np.nan_to_num(rotvec_delta, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        if not np.isfinite(gripper_delta):
+            gripper_delta = np.nan_to_num(gripper_delta, nan=0.0, posinf=0.0, neginf=0.0)
 
         # 2) Get current pose & gripper
         tcp_pose = self._get_tcp_pose()  # (7,) [x,y,z,qx,qy,qz,qw]
@@ -290,7 +312,20 @@ class XArmEnv(gym.Env):
         target_pos = tcp_pose[:3] + xyz_delta
 
         # 4) Orientation update via rotvec
-        curr_quat = tcp_pose[3:]
+        curr_quat = tcp_pose[3:].copy()
+        quat_norm = np.linalg.norm(curr_quat)
+        
+        if quat_norm < 1e-6:
+            raise ValueError(f"Invalid quaternion with zero norm: {curr_quat}")
+        
+        # 归一化四元数（确保精度）
+        if abs(quat_norm - 1.0) > 1e-6:
+            curr_quat = curr_quat / quat_norm
+        
+        # 检查是否有 NaN 或 Inf
+        if not np.isfinite(curr_quat).all():
+            raise ValueError(f"Invalid quaternion with NaN/Inf: {curr_quat}")
+        
         curr_rot = Rotation.from_quat(curr_quat)
         delta_rot = Rotation.from_rotvec(rotvec_delta)
         next_rot = delta_rot * curr_rot
@@ -299,17 +334,11 @@ class XArmEnv(gym.Env):
         # 5) Gripper update (keep in [-1,1])
         next_gripper = float(np.clip(gripper_pose + gripper_delta, -1.0, 1.0))
 
-        # 6) Convert quaternion to euler (roll, pitch, yaw) in degrees for printing
+        # 6) Convert quaternion to euler (roll, pitch, yaw) in degrees
         rpy_rad = next_rot.as_euler("xyz", degrees=False)
         rpy_deg = np.degrees(rpy_rad)
 
-        # 7) Convert gripper from [-1,1] to [0,1] where 0=closed, 1=open
-        gripper_0to1 = (next_gripper + 1.0) / 2.0
-
-        # 8) Print action information
-        self._print_action_info(target_pos, rpy_deg, gripper_0to1)
-
-        # 9) Send commands (still use radians for robot command)
+        # 7) Send commands (still use radians for robot command)
         target_pose_euler = [
             float(target_pos[0]),
             float(target_pos[1]),
@@ -318,28 +347,34 @@ class XArmEnv(gym.Env):
             float(rpy_rad[1]),
             float(rpy_rad[2]),
         ]
-        self._send_pos_command(target_pose_euler)
+        self._send_pos_command(target_pose_euler, use_servo)
         self._send_gripper_command(next_gripper)
 
     # ------------------------------------------------------------------
     # Low-level robot & camera helpers
     # ------------------------------------------------------------------
-    def _send_pos_command(self, pose_euler: np.ndarray):
+    def _send_pos_command(self, pose_euler: np.ndarray, use_servo: bool):
         """Send end-effector pose command [x,y,z,roll,pitch,yaw] to robot."""
         if self._robot is None:
             return
-        self._robot.move_end_effector_to_goal_pose(
-            pose_euler, is_radian=True, wait=False
-        )
+        
+        if use_servo:
+            self._robot.robot.set_mode(1)  # Servo mode
+            self._robot.robot.set_state(0)
+            self._robot.set_servo_cartesian(pose_euler, is_radian=True)
+        else:
+            self._robot.robot.set_mode(0)  # Position mode
+            self._robot.robot.set_state(0)
+            self._robot.move_end_effector_to_goal_pose(
+                pose_euler, is_radian=True, wait=False
+            )
 
     def _send_gripper_command(self, gripper_pos: float):
         """Send normalized gripper command in [-1,1] using robotiq."""
         if self._robot is None:
             return
-        # Map [-1,1] -> [0,255], where higher means more open (following rollout script logic)
-        # rollout: a = int((1-action[7])*255*1.4+10) then clip
-        # Here we keep it simpler and assume gripper_pos=-1 -> closed, 1 -> open
-        val = int((gripper_pos + 1.0) / 2.0 * 255.0)
+        val = (gripper_pos + 1.0) / 2.0          # [0,1]，1=open, 0=closed (norm 语义)
+        val = (1.0 - val) * 255.0                # [0,255]，0=open, 255=closed（Robotiq 语义）
         val = int(np.clip(val, 0, 255))
         try:
             self._robot.gripper_goto_robotiq(val, wait_motion=False)
@@ -349,13 +384,23 @@ class XArmEnv(gym.Env):
     def _get_tcp_pose(self) -> np.ndarray:
         """Get TCP pose as [x,y,z,qx,qy,qz,qw]."""
         if self._robot is None:
-            return np.zeros(7, dtype=np.float32)
+             return np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
 
         # Bestman returns [x,y,z,roll,pitch,yaw] in meters, radians
         pose = self._robot.get_current_end_effector_pose()
         x, y, z, roll, pitch, yaw = pose
+        
+        # 检查是否有无效值
+        if not np.isfinite([x, y, z, roll, pitch, yaw]).all():
+            return np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        
         r = Rotation.from_euler("xyz", [roll, pitch, yaw], degrees=False)
         qx, qy, qz, qw = r.as_quat()
+        
+        quat_norm = np.linalg.norm([qx, qy, qz, qw])
+        if quat_norm < 1e-6:
+            return np.array([x, y, z, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        
         return np.array([x, y, z, qx, qy, qz, qw], dtype=np.float32)
 
     def _get_tcp_vel(self) -> np.ndarray:
@@ -378,7 +423,6 @@ class XArmEnv(gym.Env):
             return np.zeros(1, dtype=np.float32)
 
         try:
-            # rollout: gripper_open_width = 1 - bestman.get_gripper_position_robotiq() / 255.0
             pos = self._robot.get_gripper_position_robotiq()
             # Map raw [0,255] -> [0,1] open_width, then to [-1,1]
             open_width = 1.0 - float(pos) / 255.0

@@ -1,4 +1,4 @@
-from serl_robot_infra.xarm_env.xarm_env import XArmEnv
+from serl_robot_infra.xarm_env import XArmEnv
 
 
 class UmiPickXArmEnv(XArmEnv):

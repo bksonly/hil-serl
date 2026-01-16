@@ -50,17 +50,17 @@ class UMIExpert:
         rospy.loginfo(f"  Clamp topic: {self.clamp_topic}")
         rospy.loginfo(f"  Pose queue size: {self.pose_queue_size}")
 
-    def transform_to_base_quat(self, x, y, z, qx, qy, qz, qw, T_base_to_local):
+    def transform_to_base_quat(self, x, y, z, qx, qy, qz, qw, T_base_to_umi):
         '''transform the pose of fastumi to robot base, returns quaternion'''
-        T_base_to_local = np.array(T_base_to_local)
+        T_base_to_umi = np.array(T_base_to_umi)
         
-        rotation_local = R.from_quat([qx, qy, qz, qw]).as_matrix()
-        T_local = np.eye(4)
-        T_local[:3, :3] = rotation_local
-        T_local[:3, 3] = [x, y, z]
-        
-        # 计算变换后的位姿：T_base = T_base_to_local * T_local
-        T_base = np.matmul(T_base_to_local, T_local)
+        rotation_umi = R.from_quat([qx, qy, qz, qw]).as_matrix()
+        T_umi = np.eye(4)
+        T_umi[:3, :3] = rotation_umi
+        T_umi[:3, 3] = [x, y, z]
+
+        # 计算变换后的位姿：T_base = T_base_to_umi * T_umi  
+        T_base = np.matmul(T_base_to_umi, T_umi)
         
         x_base, y_base, z_base = T_base[:3, 3]
         rotation_base = R.from_matrix(T_base[:3, :3])
@@ -71,14 +71,14 @@ class UMIExpert:
         """回调函数：处理接收到的 pose 消息并存入队列。"""
         try:
             pose_msg = msg.poseMsg
-            T_base2local = np.array([[ 0.    ,  0.        ,  1.      ,  0.  ],
+            T_base2umi = np.array([[ 0.    ,  0.        ,  1.      ,  0.  ],
                                      [ -1.    ,  0.       ,  0.      ,  0.   ],
                                      [0.     ,  -1.        ,  0.      ,  0.  ],
                                      [ 0.    ,  0.        ,  0.      ,  1.        ]])
             pose_base = self.transform_to_base_quat(
                 pose_msg.pose.position.x, pose_msg.pose.position.y, pose_msg.pose.position.z, 
                 pose_msg.pose.orientation.x, pose_msg.pose.orientation.y, pose_msg.pose.orientation.z, 
-                pose_msg.pose.orientation.w, T_base2local)
+                pose_msg.pose.orientation.w, T_base2umi)
             pose_data = {
                 'position': {
                     'x': pose_base[0],

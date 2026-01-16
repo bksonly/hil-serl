@@ -53,3 +53,7 @@ wandb/
 *.gif
 
 serl_robot_infra/xarm_env/BestMan_Xarm/xArm-Python-SDK/
+参考/
+cankao/
+serl_robot_infra/xarm_env/umi/start_process/launcher.pid
+log.md

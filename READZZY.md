@@ -21,7 +21,7 @@ python examples/train_rlpd.py \
     --checkpoint_path=/home/ubuntu/Documents/data/pick1/rlpd_ckpts
 
 在线RL
-PYTHONPATH=/home/ubuntu/Desktop/hil-serl \
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH \
 python examples/train_rlpd.py \
   --exp_name=umi_pick \
   --learner \
@@ -29,12 +29,15 @@ python examples/train_rlpd.py \
   --checkpoint_path=/home/ubuntu/Documents/data/pick1/rlpd_ckpts \
   --debug=True
 
-PYTHONPATH=/home/ubuntu/Desktop/hil-serl \
+
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH
 python examples/train_rlpd.py \
   --exp_name=umi_pick \
-  --actor 
+  --actor
 
 
+# 配环境
+## 遥操作以外环境
 conda create -n hilserl_cpu python=3.10
 
 cd serl_launcher
@@ -48,4 +51,71 @@ python3 setup.py install
 pip install -e serl_launcher
 pip install -e serl_robot_infra
 
+## 遥操作所需环境
 
+cd serl_robot_infra/xarm_env/umi/start_process
+
+### ROS1 noetic安装
+
+本地系统级安装
+wget http://fishros.com/install -O fishros && . fishros
+
+### rosdep修复 （暂时先这样）
+
+./fix_ros1_dependencies.sh
+
+### XVSDK安装
+
+本地系统级安装，这里可能不全，后续再维护
+sudo -E ./install-ros1.sh XVSDK_focal_amd64_0107.deb
+sudo apt -y install ros-noetic-ddynamic-reconfigure
+
+### 电脑里之前做过数采的可以直接跳到这一步
+
+### rostopic发布
+
+bash  unified_launcher.sh --no-vive
+
+/rosout
+/rosout_agg
+/tf
+/tf_static
+/xv_sdk/250801DR48FP25002063/clamp/Data
+/xv_sdk/250801DR48FP25002063/color_camera/camera_info
+/xv_sdk/250801DR48FP25002063/color_camera/image
+/xv_sdk/250801DR48FP25002063/color_camera/point_cloud
+/xv_sdk/250801DR48FP25002063/fisheye_cameras/left/camera_info
+/xv_sdk/250801DR48FP25002063/fisheye_cameras/left/image
+/xv_sdk/250801DR48FP25002063/fisheye_cameras/left2/camera_info
+/xv_sdk/250801DR48FP25002063/fisheye_cameras/left2/image
+/xv_sdk/250801DR48FP25002063/fisheye_cameras/right/camera_info
+/xv_sdk/250801DR48FP25002063/fisheye_cameras/right/image
+/xv_sdk/250801DR48FP25002063/fisheye_cameras/right2/camera_info
+/xv_sdk/250801DR48FP25002063/fisheye_cameras/right2/image
+/xv_sdk/250801DR48FP25002063/imu_sensor/data_raw
+/xv_sdk/250801DR48FP25002063/parameter_descriptions
+/xv_sdk/250801DR48FP25002063/parameter_updates
+/xv_sdk/250801DR48FP25002063/rgbd_camera/camera_info
+/xv_sdk/250801DR48FP25002063/rgbd_camera/image
+/xv_sdk/250801DR48FP25002063/slam/pose
+/xv_sdk/250801DR48FP25002063/slam/trajectory
+/xv_sdk/250801DR48FP25002063/tof_camera/camera_info
+/xv_sdk/250801DR48FP25002063/tof_camera/image
+/xv_sdk/new_device
+/xv_sdk/parameter_descriptions
+/xv_sdk/parameter_updates
+
+
+### usb连上夹爪 配对 序列号写入config
+
+pip install psutil==5.9.8 PyYAML openvr rosdep
+
+bash pairing_process.sh
+
+### 测试遥操作
+source ~/catkin_ws/devel/setup.bash 写入.bashrc
+pip install pynput
+
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH python serl_robot_infra/xarm_env/umi/umi_teleop.py
+
+pip install keyboard
