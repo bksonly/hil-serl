@@ -57,3 +57,5 @@ serl_robot_infra/xarm_env/BestMan_Xarm/xArm-Python-SDK/
 cankao/
 serl_robot_infra/xarm_env/umi/start_process/launcher.pid
 log.md
+classifier_data/
+classifier_ckpt/

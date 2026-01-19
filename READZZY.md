@@ -1,3 +1,10 @@
+标注
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl   python examples/annotate_rewards_from_hdf5.py
+
+分类器训练
+source /opt/ros/noetic/setup.bash
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl python examples/train_reward_classifier.py --exp_name umi_pick 
+
 BC训练
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl python examples/train_bc.py   --exp_name=umi_pick   --bc_checkpoint_path=/home/ubuntu/Documents/data/pick1/bc_ckpts
 

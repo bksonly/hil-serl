@@ -29,6 +29,13 @@ def main(_):
     config = CONFIG_MAPPING[FLAGS.exp_name]()
     env = config.get_environment(fake_env=True, save_video=False, classifier=False)
 
+    # helper: ensure obs has flattened state for ReplayBuffer
+    def _ensure_state(obs):
+        if "state" not in obs:
+            state_space = env.observation_space["state"]
+            obs["state"] = np.zeros(state_space.shape, dtype=state_space.dtype)
+        return obs
+
     devices = jax.local_devices()
     sharding = jax.sharding.PositionalSharding(devices)
     
@@ -46,6 +53,8 @@ def main(_):
         for trans in success_data:
             if "images" in trans['observations'].keys():
                 continue
+            trans["observations"] = _ensure_state(trans["observations"])
+            trans["next_observations"] = _ensure_state(trans["next_observations"])
             trans["labels"] = 1
             trans['actions'] = env.action_space.sample()
             pos_buffer.insert(trans)
@@ -72,6 +81,8 @@ def main(_):
         for trans in failure_data:
             if "images" in trans['observations'].keys():
                 continue
+            trans["observations"] = _ensure_state(trans["observations"])
+            trans["next_observations"] = _ensure_state(trans["next_observations"])
             trans["labels"] = 0
             trans['actions'] = env.action_space.sample()
             neg_buffer.insert(trans)

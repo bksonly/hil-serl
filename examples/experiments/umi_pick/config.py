@@ -18,6 +18,8 @@ class EnvConfig(XArmEnvConfig):
 class TrainConfig(DefaultTrainingConfig):
     # Single camera
     image_keys = ["image"]
+    # Reward classifier使用的图像键
+    classifier_keys = ["image"]
     # Proprio keys consistent with XArmEnv observation dict
     proprio_keys = ["tcp_pose", "tcp_vel", "gripper_pose"]
     # Use fixed-gripper mode: gripper as continuous action (not discrete {-1,0,1})

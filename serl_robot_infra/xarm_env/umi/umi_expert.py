@@ -1,6 +1,11 @@
 """UMI Expert for teleoperation with UMI gripper and XArm."""
-import rospy
-from xv_sdk.msg import Clamp, PoseStampedConfidence
+# 训练分类器时不需要 ROS，这里做延迟/可选导入，避免在无 ROS 环境下崩溃。
+try:
+    import rospy
+    from xv_sdk.msg import Clamp, PoseStampedConfidence
+except ImportError:
+    rospy = None
+    Clamp = PoseStampedConfidence = None
 
 import threading
 from collections import deque
@@ -14,6 +19,8 @@ class UMIExpert:
     """接收 UMI rostopic，维护 pose 队列和当前 clamp 值。"""
     
     def __init__(self, pose_queue_size):
+        if rospy is None:
+            raise ImportError("rospy 未安装：UMIExpert 需要 ROS 环境。训练分类器请确保未实例化 UMIExpert。")
         # 默认路径：相对于当前文件的 start_process/config.json
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(current_dir, "start_process", "config.json")
