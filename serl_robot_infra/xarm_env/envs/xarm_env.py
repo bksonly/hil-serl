@@ -432,10 +432,9 @@ class XArmEnv(gym.Env):
             return np.zeros(1, dtype=np.float32)
 
     def _get_images(self) -> Dict[str, np.ndarray]:
-        image = np.zeros((128, 128, 3), dtype=np.uint8)
-        return {"image": image}
-
-        
+        # image = np.zeros((128, 128, 3), dtype=np.uint8)
+        # return {"image": image}
+       
         """Get a single RGB image, resized to 128x128."""
         if self._camera is None:
             image = np.zeros((128, 128, 3), dtype=np.uint8)

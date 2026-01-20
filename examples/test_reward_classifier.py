@@ -4,11 +4,7 @@
 按一次空格：重新随机抽取并推理；按 q/ESC 或关闭窗口退出。
 
 用法示例：
-PYTHONPATH=/home/ubuntu/Desktop/hil-serl \
-python examples/test_reward_classifier.py \
-    --hdf5_dir=/home/ubuntu/Documents/data/pick1/hdf5 \
-    --checkpoint_dir=/home/ubuntu/Desktop/hil-serl/classifier_ckpt \
-    --exp_name=umi_pick
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl python examples/test_reward_classifier.py 
 """
 
 import os
@@ -25,7 +21,7 @@ from serl_launcher.networks.reward_classifier import load_classifier_func
 from experiments.mappings import CONFIG_MAPPING
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string("hdf5_dir", "/home/ubuntu/Documents/data/pick1/hdf5", "HDF5 目录，包含 *.hdf5。")
+flags.DEFINE_string("hdf5_dir", "/home/ubuntu/Desktop/hil-serl/serl_robot_infra/xarm_env/umi/hdf5", "HDF5 目录，包含 *.hdf5。")
 flags.DEFINE_string("checkpoint_dir", "/home/ubuntu/Desktop/hil-serl/classifier_ckpt", "分类器 checkpoint 目录。")
 flags.DEFINE_string("exp_name", "umi_pick", "对应 CONFIG_MAPPING 的实验名。")
 flags.DEFINE_integer("resize", 128, "送入分类器的图像尺寸（与训练一致）。")

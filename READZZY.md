@@ -1,21 +1,47 @@
-标注
+## 数采
+cd serl_robot_infra/xarm_env/umi
+
+cd data_collector_opt
+conda create -n shucai python=3.8.0 #一定要用这个版本的python，没法兼容
+pip install -r requirements.txt
+
+cd start_process
+bash unified.launch
+python device_pairing.py #换了设备要更新config.json
+
+数据存在serl_robot_infra/xarm_env/umi/data_collector_opt/DATA，拔插头
+
+## 数据格式转换hdf5
+pip install pandas
+python serl_robot_infra/xarm_env/umi/raw2hdf5.py serl_robot_infra/xarm_env/umi/data_collector_opt/DATA/ serl_robot_infra/xarm_env/umi/hdf5
+以后可以跳过hdf5这一步
+
+## 数据格式转换pkl
+python serl_robot_infra/xarm_env/umi/convert_hdf5_to_pkl.py
+参数在脚本里改
+
+## 标注
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl   python examples/annotate_rewards_from_hdf5.py
 
-分类器训练
+## 分类器训练
 source /opt/ros/noetic/setup.bash
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl python examples/train_reward_classifier.py --exp_name umi_pick 
 
-BC训练
+## 分类器测试
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl python examples/test_reward_classifier.py 
+参数在脚本里改
+
+## BC训练
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl python examples/train_bc.py   --exp_name=umi_pick   --bc_checkpoint_path=/home/ubuntu/Documents/data/pick1/bc_ckpts
 
-离线RL
+## 离线RL
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl \
 python examples/train_rlpd.py \
   --exp_name=umi_pick \
   --learner=True \
   --offline=True \
-  --demo_path=/home/ubuntu/Desktop/hil-serl/demo_data/pick_parallel.pkl \
-  --checkpoint_path=/home/ubuntu/Documents/data/pick1/rlpd_ckpts \
+  --demo_path=/home/ubuntu/Desktop/hil-serl/demo_data/unplug.pkl \
+  --checkpoint_path=/home/ubuntu/Desktop/hil-serl/demo_ckpt \
   --debug=True
 
 Actor推理

@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Convert UMI pick-and-place HDF5 data to HIL-SERL pkl format.
-
-h5ls -r episode_000.hdf5 
+(hilserl_cpu) ubuntu@ubuntu-System-Product-Name:~/Desktop/hil-serl/serl_robot_infra/xarm_env/umi/hdf5$ h5ls -r episode_000.hdf5 
 /                        Group
-/action                  Dataset {209, 8}
+/action                  Dataset {149, 8}
 /observations            Group
 /observations/front      Group
-/observations/front/images Dataset {209, 1280, 1280, 3} (RGB)
- /observations/qpos       Dataset {209, 8} (x, y, z, qx, qy, qz, qw, gripper_width_mm)
+/observations/front/images Dataset {149, 1280, 1280, 3} (RGB)
+/observations/qpos       Dataset {149, 8} (x, y, z, qx, qy, qz, qw, gripper_width_mm)
+
 
 Output pkl format (single pkl file containing a Python list of transitions):
 - Each transition (time step) is a dict:
@@ -49,8 +48,8 @@ from scipy.spatial.transform import Rotation
 
 IMAGE_SIZE = 128  # original pkl uses 128x128 RGB
 FLAGS = flags.FLAGS
-flags.DEFINE_string("hdf5_dir", "/home/ubuntu/Documents/data/pick1/hdf5", "Directory containing HDF5 files.")
-flags.DEFINE_string("output_pkl", "/home/ubuntu/Desktop/hil-serl/demo_data/pick1.pkl", "Output pkl file path.")
+flags.DEFINE_string("hdf5_dir", "/home/ubuntu/Desktop/hil-serl/serl_robot_infra/xarm_env/umi/hdf5", "Directory containing HDF5 files.")
+flags.DEFINE_string("output_pkl", "/home/ubuntu/Desktop/hil-serl/demo_data/unplug.pkl", "Output pkl file path.")
 flags.DEFINE_list("action_scale", [0.015, 0.1, 1.0], "Action scale for [xyz_delta_m, rot_delta_rad, gripper]. Used to normalize deltas to [-1, 1].")
 flags.DEFINE_integer("num_workers", 28, "Parallel workers for conversion (default: cpu_count()//2).")
 

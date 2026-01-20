@@ -27,7 +27,7 @@ from absl import app, flags
 from typing import List, Dict
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string("hdf5_dir", "/home/ubuntu/Documents/data/pick1/hdf5", "Directory containing HDF5 files.")
+flags.DEFINE_string("hdf5_dir", "/home/ubuntu/Desktop/hil-serl/serl_robot_infra/xarm_env/umi/hdf5", "Directory containing HDF5 files.")
 flags.DEFINE_string("output_dir", "./classifier_data", "Output directory for pkl files.")
 flags.DEFINE_integer("num_episodes", 5, "Number of HDF5 episodes to annotate (randomly sampled).")
 flags.DEFINE_integer("image_size", 128, "Target image size for resizing.")
@@ -68,8 +68,7 @@ def load_hdf5_episode(hdf5_path: str, image_size: int = 128) -> List[Dict]:
     """
     frames = []
     with h5py.File(hdf5_path, 'r') as f:
-        # images = f['observations/front/images'][:]  # (T, 1280, 1280, 3)
-        images = f['observations/images'][:]  # (T, 1280, 1280, 3)
+        images = f['observations/front/images'][:]  # (T, 1280, 1280, 3)
         T = len(images)
         
         for t in range(T):

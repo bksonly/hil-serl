@@ -6,6 +6,8 @@ import jax.numpy as jnp
 from serl_robot_infra.xarm_env import XArmEnv, XArmEnvConfig, UMIIntervention
 from serl_launcher.wrappers.serl_obs_wrappers import SERLObsWrapper
 from serl_launcher.wrappers.chunking import ChunkingWrapper
+from serl_robot_infra.xarm_env.envs.wrappers import MultiCameraBinaryRewardClassifierWrapper
+from serl_launcher.networks.reward_classifier import load_classifier_func
 from experiments.config import DefaultTrainingConfig
 from experiments.umi_pick.wrapper import UmiPickXArmEnv
 
@@ -26,14 +28,14 @@ class TrainConfig(DefaultTrainingConfig):
     # Note: "fixed" here means "not using discrete grasp_critic", not "gripper is fixed"
     setup_mode = "single-arm-fixed-gripper"
     encoder_type = "resnet-pretrained"
-    checkpoint_period = 10
-    buffer_period = 10000
+    checkpoint_period = 100
+    buffer_period = 400
     random_steps = 0
     
     # RL training parameters
     max_steps = 2000
     training_starts = 10000  # Minimum buffer size before starting training
-    batch_size = 256
+    batch_size = 1024
     cta_ratio = 2  # Critic-to-actor update ratio
     discount = 0.97
     steps_per_update = 50
@@ -53,6 +55,23 @@ class TrainConfig(DefaultTrainingConfig):
         # SERL 观测与 chunking 包装
         env = SERLObsWrapper(env, proprio_keys=self.proprio_keys)
         env = ChunkingWrapper(env, obs_horizon=1, act_exec_horizon=None)
+        
+        # 如果启用分类器，加载并包装环境
+        if classifier and self.classifier_keys is not None:
+            classifier_func = load_classifier_func(
+                key=jax.random.PRNGKey(0),
+                sample=env.observation_space.sample(),
+                image_keys=self.classifier_keys,
+                checkpoint_path=os.path.abspath("classifier_ckpt/"),
+            )
+
+            def reward_func(obs):
+                sigmoid = lambda x: 1 / (1 + jnp.exp(-x))
+                # 使用分类器输出作为奖励，阈值可以根据任务调整
+                return int(sigmoid(classifier_func(obs)) > 0.75)
+
+            env = MultiCameraBinaryRewardClassifierWrapper(env, reward_func)
+        
         return env
     
     def process_demos(self, demo):
