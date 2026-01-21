@@ -110,11 +110,16 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
         print(f"average time: {np.mean(time_list)}")
         return  # after done eval, return and exit
     
-    start_step = (
-        int(os.path.basename(natsorted(glob.glob(os.path.join(FLAGS.checkpoint_path, "buffer/*.pkl")))[-1])[12:-4]) + 1
-        if FLAGS.checkpoint_path and os.path.exists(FLAGS.checkpoint_path)
-        else 0
-    )
+    # Resume step counter if buffer/*.pkl exists; otherwise start from 0
+    start_step = 0
+    if FLAGS.checkpoint_path and os.path.exists(FLAGS.checkpoint_path):
+        buffer_glob = glob.glob(os.path.join(FLAGS.checkpoint_path, "buffer/*.pkl"))
+        if buffer_glob:
+            last_file = natsorted(buffer_glob)[-1]
+            try:
+                start_step = int(os.path.basename(last_file)[12:-4]) + 1
+            except Exception:
+                start_step = 0
 
     datastore_dict = {
         "actor_env": data_store,

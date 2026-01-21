@@ -13,10 +13,9 @@ Output pkl format (single pkl file containing a Python list of transitions):
 - Each transition (time step) is a dict:
   {
     "observations": {
-        "state": np.ndarray shape (14,), float32
-            # Flattened concatenation: [tcp_pose(7), tcp_vel(6), gripper_pose(1)]
-            # tcp_pose: [x, y, z, qx, qy, qz, qw], meters + unit quaternion (absolute)
-            # tcp_vel: [vx, vy, vz, wx, wy, wz], m/s and rad/s (zeros if unavailable)
+        "state": np.ndarray shape (8,), float32
+            # Flattened concatenation: [tcp_pose(7), gripper_pose(1)]
+            # tcp_pose: [x, y, z, qx, qy, qz, qw] in base coordinates, meters + unit quaternion (absolute)
             # gripper_pose: normalized gripper position in [-1, 1] (from width 0-88mm -> [-1, 1])
         "image": np.ndarray shape (H, W, 3), uint8
             # RGB image resized to image_size (default 128)
@@ -44,9 +43,51 @@ import multiprocessing as mp
 from tqdm import tqdm
 from absl import app, flags
 from typing import List, Dict, Tuple
-from scipy.spatial.transform import Rotation
+from scipy.spatial.transform import Rotation as R
 
 IMAGE_SIZE = 128  # original pkl uses 128x128 RGB
+
+
+def transform_to_base_quat(x, y, z, qx, qy, qz, qw, T_base_to_local):
+    """
+    Transform pose from local coordinate system to base coordinate system.
+
+    Args:
+        x, y, z: position in local coordinate system
+        qx, qy, qz, qw: quaternion in local coordinate system
+        T_base_to_local: 4x4 transformation matrix from base to local
+
+    Returns:
+        x_base, y_base, z_base, qx_base, qy_base, qz_base, qw_base, roll_base, pitch_base, yaw_base
+    """
+    rotation_local = R.from_quat([qx, qy, qz, qw]).as_matrix()
+    T_local = np.eye(4)
+    T_local[:3, :3] = rotation_local
+    T_local[:3, 3] = [x, y, z]
+
+    T_base_r = np.dot(T_local[:3, :3], T_base_to_local[:3, :3])
+
+    x_base, y_base, z_base = T_base_to_local[:3, 3] + T_local[:3, 3]
+    rotation_base = R.from_matrix(T_base_r)
+    roll_base, pitch_base, yaw_base = rotation_base.as_euler('xyz', degrees=False)
+    qx_base, qy_base, qz_base, qw_base = rotation_base.as_quat()
+    return x_base, y_base, z_base, qx_base, qy_base, qz_base, qw_base, roll_base, pitch_base, yaw_base
+
+
+def get_base_transformation():
+    """
+    Get transformation matrix from base to local coordinate system.
+    Hard-coded parameters from the old script.
+    """
+    # Base point in local coordinate system
+    base_x, base_y, base_z = 0.158, 0.28, 0.145
+    base_roll, base_pitch, base_yaw = np.deg2rad([179.94725, -89.999981, 0.0])
+
+    rotation_base_to_local = R.from_euler('xyz', [base_roll, base_pitch, base_yaw]).as_matrix()
+    T_base_to_local = np.eye(4)
+    T_base_to_local[:3, :3] = rotation_base_to_local
+    T_base_to_local[:3, 3] = [base_x, base_y, base_z]
+    return T_base_to_local
 FLAGS = flags.FLAGS
 flags.DEFINE_string("hdf5_dir", "/home/ubuntu/Desktop/hil-serl/serl_robot_infra/xarm_env/umi/hdf5", "Directory containing HDF5 files.")
 flags.DEFINE_string("output_pkl", "/home/ubuntu/Desktop/hil-serl/demo_data/unplug.pkl", "Output pkl file path.")
@@ -79,16 +120,16 @@ def resize_image(img: np.ndarray, target_size: int = IMAGE_SIZE) -> np.ndarray:
 def flatten_state_dict(state_dict: Dict[str, np.ndarray], proprio_keys: List[str] = None) -> np.ndarray:
     """
     Flatten state dictionary to 1D array, matching SERLObsWrapper behavior.
-    
+
     Args:
-        state_dict: Dictionary with keys like "tcp_pose", "tcp_vel", "gripper_pose"
-        proprio_keys: Keys in order to concatenate (default: ["tcp_pose", "tcp_vel", "gripper_pose"])
-    
+        state_dict: Dictionary with keys like "tcp_pose", "gripper_pose"
+        proprio_keys: Keys in order to concatenate (default: ["tcp_pose", "gripper_pose"] - no tcp_vel for UMI data)
+
     Returns:
         Flattened 1D array, float32
     """
     if proprio_keys is None:
-        proprio_keys = ["tcp_pose", "tcp_vel", "gripper_pose"]
+        proprio_keys = ["tcp_pose", "gripper_pose"]  # Removed tcp_vel as UMI data doesn't have it
     
     parts = []
     for key in proprio_keys:
@@ -148,8 +189,8 @@ def compute_action_delta(
     xyz_delta = next_tcp_pose[:3] - curr_tcp_pose[:3]
     
     # Compute rotation delta as rotvec (in radians)
-    curr_rot = Rotation.from_quat(curr_tcp_pose[3:])
-    next_rot = Rotation.from_quat(next_tcp_pose[3:])
+    curr_rot = R.from_quat(curr_tcp_pose[3:])
+    next_rot = R.from_quat(next_tcp_pose[3:])
     # Relative rotation: next_rot = curr_rot * delta_rot
     # So: delta_rot = curr_rot.inv() * next_rot
     delta_rot = curr_rot.inv() * next_rot
@@ -171,32 +212,41 @@ def compute_action_delta(
 
 def qpos_to_state(qpos: np.ndarray) -> Dict[str, np.ndarray]:
     """
-    Convert qpos to state observation.
-    
-    Since action is copied from qpos, qpos format is:
-    [x, y, z, qx, qy, qz, qw, gripper_width_mm]
-    
+    Convert qpos to state observation, transforming coordinates from UMI local to base frame.
+
+    Qpos format: [x, y, z, qx, qy, qz, qw, gripper_width_mm] in UMI local coordinates
+
     Args:
         qpos: (8,) array - [x, y, z, qx, qy, qz, qw, gripper_width_mm]
-    
+
     Returns:
         Dict with state keys matching HIL-SERL format:
         {
-            "tcp_pose": (7,) [x, y, z, qx, qy, qz, qw],
-            "tcp_vel": (6,) [vx, vy, vz, wx, wy, wz] (zeros, not available),
+            "tcp_pose": (7,) [x, y, z, qx, qy, qz, qw] in base coordinates,
             "gripper_pose": (1,) normalized gripper [-1, 1]
         }
+        Note: tcp_vel removed as UMI data doesn't have velocity info
     """
-    # Extract tcp_pose (xyz + quat)
-    tcp_pose = qpos[:7].astype(np.float32)
-    
+    # Get transformation matrix
+    T_base_to_local = get_base_transformation()
+
+    # Extract raw pose from qpos (UMI local coordinates)
+    x, y, z, qx, qy, qz, qw = qpos[:7]
+
+    # Transform to base coordinates
+    x_base, y_base, z_base, qx_base, qy_base, qz_base, qw_base, _, _, _ = transform_to_base_quat(
+        x, y, z, qx, qy, qz, qw, T_base_to_local
+    )
+
+    # Create tcp_pose in base coordinates
+    tcp_pose = np.array([x_base, y_base, z_base, qx_base, qy_base, qz_base, qw_base], dtype=np.float32)
+
     # Extract and normalize gripper (from [0, 88]mm to [-1, 1])
     gripper_width_mm = qpos[7] if len(qpos) > 7 else 0.0
     gripper_pose = np.array([(gripper_width_mm / 88.0) * 2.0 - 1.0], dtype=np.float32)
-    
+
     return {
         "tcp_pose": tcp_pose,
-        "tcp_vel": np.zeros(6, dtype=np.float32),  # Velocity not available in your data
         "gripper_pose": gripper_pose,
     }
 
@@ -365,7 +415,7 @@ def convert_all_hdf5_to_pkl(
         # state is now a flattened 1D array (not a dict)
         state_arr = sample['observations']['state']
         print(f"   observations['state'] shape: {state_arr.shape}, dtype: {state_arr.dtype}")
-        print(f"   observations['state'] (flattened: tcp_pose[7] + tcp_vel[6] + gripper_pose[1] = {len(state_arr)} dims)")
+        print(f"   observations['state'] (flattened: tcp_pose[7] + gripper_pose[1] = {len(state_arr)} dims)")
         print(f"   observations['image'] shape: {sample['observations']['image'].shape}, dtype: {sample['observations']['image'].dtype}")
         print(f"   actions shape: {sample['actions'].shape}, dtype: {sample['actions'].dtype}")
 

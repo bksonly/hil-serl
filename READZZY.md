@@ -19,7 +19,7 @@ python serl_robot_infra/xarm_env/umi/raw2hdf5.py serl_robot_infra/xarm_env/umi/d
 ## 数据格式转换pkl
 python serl_robot_infra/xarm_env/umi/convert_hdf5_to_pkl.py
 参数在脚本里改
-
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH python serl_robot_infra/xarm_env/umi/replay_pkl.py 
 ## 标注
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl   python examples/annotate_rewards_from_hdf5.py
 
@@ -51,23 +51,23 @@ python examples/train_rlpd.py \
     --actor \
     --eval_checkpoint_step=10 \
     --eval_n_trajs=5 \
-    --checkpoint_path=/home/ubuntu/Documents/data/pick1/rlpd_ckpts
+    --checkpoint_path=/home/ubuntu/Desktop/hil-serl/demo_ckpt
 
-在线RL
+## 在线RL
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH \
 python examples/train_rlpd.py \
   --exp_name=umi_pick \
   --learner \
   --demo_path=/home/ubuntu/Desktop/hil-serl/demo_data/pick_parallel.pkl \
-  --checkpoint_path=/home/ubuntu/Documents/data/pick1/rlpd_ckpts \
+  --checkpoint_path=/home/ubuntu/Desktop/hil-serl/demo_ckpt \
   --debug=True
 
 
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH
 python examples/train_rlpd.py \
   --exp_name=umi_pick \
-  --actor
-
+  --actor \
+  --checkpoint_path=/home/ubuntu/Desktop/hil-serl/demo_ckpt
 
 # 配环境
 ## 遥操作以外环境

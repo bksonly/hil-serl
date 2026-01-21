@@ -22,8 +22,8 @@ class TrainConfig(DefaultTrainingConfig):
     image_keys = ["image"]
     # Reward classifier使用的图像键
     classifier_keys = ["image"]
-    # Proprio keys consistent with XArmEnv observation dict
-    proprio_keys = ["tcp_pose", "tcp_vel", "gripper_pose"]
+    # Proprio keys consistent with XArmEnv observation dict (removed tcp_vel as UMI data doesn't have it)
+    proprio_keys = ["tcp_pose", "gripper_pose"]
     # Use fixed-gripper mode: gripper as continuous action (not discrete {-1,0,1})
     # Note: "fixed" here means "not using discrete grasp_critic", not "gripper is fixed"
     setup_mode = "single-arm-fixed-gripper"
@@ -68,7 +68,10 @@ class TrainConfig(DefaultTrainingConfig):
             def reward_func(obs):
                 sigmoid = lambda x: 1 / (1 + jnp.exp(-x))
                 # 使用分类器输出作为奖励，阈值可以根据任务调整
-                return int(sigmoid(classifier_func(obs)) > 0.75)
+                # classifier_func(obs) 通常返回 shape (B, 1) 或 (B,) 的 logit，这里取第一个标量
+                logit = jnp.asarray(classifier_func(obs)).reshape(-1)[0]
+                prob = float(sigmoid(logit))
+                return int(prob > 0.75)
 
             env = MultiCameraBinaryRewardClassifierWrapper(env, reward_func)
         
@@ -78,6 +81,7 @@ class TrainConfig(DefaultTrainingConfig):
         """
         Process demonstration data if needed.
         For UMI data that's already converted via convert_hdf5_to_pkl.py,
+        and now in base coordinates with 8D state (tcp_pose + gripper, no tcp_vel),
         no additional processing is needed.
         """
         return demo

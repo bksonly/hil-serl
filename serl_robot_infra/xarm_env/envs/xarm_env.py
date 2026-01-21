@@ -7,7 +7,6 @@ It mirrors the key interfaces of FrankaEnv:
 
 State (for each step):
 - "tcp_pose": (7,)  [x, y, z, qx, qy, qz, qw]  (meters, unit quaternion)
-- "tcp_vel":  (6,) [vx, vy, vz, wx, wy, wz]    (m/s, rad/s)  (approx / zeros)
 - "gripper_pose": (1,) normalized in [-1, 1]
 
 Action:
@@ -55,7 +54,7 @@ class XArmEnvConfig:
     POS_FREQUENCY: int = 3  # Hz
     SERVO_FREQUENCY: int = 50  # Hz
     # Camera: simple OpenCV VideoCapture port
-    CAMERA_PORT: int = 0
+    CAMERA_PORT: int = 1
 
     # Action scaling: [xyz_scale_m, rot_scale_rad, gripper_scale]
     ACTION_SCALE: np.ndarray = np.array([0.015, 0.1, 1.0], dtype=np.float32)
@@ -64,8 +63,8 @@ class XArmEnvConfig:
     MAX_EPISODE_LENGTH: int = 10000
 
     # Reset pose in task space: [x, y, z, roll, pitch, yaw] (meters, radians)
-    # RESET_POSE: np.ndarray = np.array([0.158, 0.28, 0.145, np.pi, -np.pi / 2.0, 0.0], dtype=np.float32)
-    RESET_POSE: np.ndarray = np.array([0.4, -0.004, 0.1398, np.pi, -np.pi / 2.0, 0.0], dtype=np.float32) # user-provided pick reset: [0.158, 0.28, 0.145, 180°, -90°, 0°]
+    RESET_POSE: np.ndarray = np.array([0.158, 0.28, 0.145, np.pi, -np.pi / 2.0, 0.0], dtype=np.float32)
+    # RESET_POSE: np.ndarray = np.array([0.4, -0.004, 0.1398, np.pi, -np.pi / 2.0, 0.0], dtype=np.float32) # user-provided pick reset: [0.158, 0.28, 0.145, 180°, -90°, 0°]
 
 
 class XArmEnv(gym.Env):
@@ -99,9 +98,6 @@ class XArmEnv(gym.Env):
                     {
                         "tcp_pose": gym.spaces.Box(
                             -np.inf, np.inf, shape=(7,), dtype=np.float32
-                        ),
-                        "tcp_vel": gym.spaces.Box(
-                            -np.inf, np.inf, shape=(6,), dtype=np.float32
                         ),
                         "gripper_pose": gym.spaces.Box(
                             -1.0, 1.0, shape=(1,), dtype=np.float32
@@ -252,7 +248,6 @@ class XArmEnv(gym.Env):
             # Simple fake obs: zeros + black image
             state_obs = {
                 "tcp_pose": np.zeros(7, dtype=np.float32),
-                "tcp_vel": np.zeros(6, dtype=np.float32),
                 "gripper_pose": np.zeros(1, dtype=np.float32),
             }
             image = np.zeros((128, 128, 3), dtype=np.uint8)
@@ -262,13 +257,11 @@ class XArmEnv(gym.Env):
             return obs
 
         tcp_pose = self._get_tcp_pose()
-        tcp_vel = self._get_tcp_vel()
         gripper_pose = self._get_gripper_pose()
         images = self._get_images()
 
         state_obs = {
             "tcp_pose": tcp_pose.astype(np.float32),
-            "tcp_vel": tcp_vel.astype(np.float32),
             "gripper_pose": gripper_pose.astype(np.float32),
         }
         obs = {"state": state_obs, "images": images}
@@ -402,20 +395,6 @@ class XArmEnv(gym.Env):
             return np.array([x, y, z, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
         
         return np.array([x, y, z, qx, qy, qz, qw], dtype=np.float32)
-
-    def _get_tcp_vel(self) -> np.ndarray:
-        """Get TCP velocity [vx,vy,vz,wx,wy,wz]."""
-        if self._robot is None:
-            return np.zeros(6, dtype=np.float32)
-
-        try:
-            v = self._robot.get_current_tcp_speed()
-            v = np.asarray(v, dtype=np.float32)
-            if v.shape[0] >= 6:
-                return v[:6]
-        except Exception:
-            pass
-        return np.zeros(6, dtype=np.float32)
 
     def _get_gripper_pose(self) -> np.ndarray:
         """Get normalized gripper pose in [-1,1]."""

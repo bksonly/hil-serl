@@ -54,7 +54,7 @@ class UMIIntervention(gym.ActionWrapper):
     def __init__(self, env, config_path=None, action_indices=None):
         super().__init__(env)
 
-        self.debug_mode = True
+        self.debug_mode = False
         
         # UMI Expert：只负责提供 delta pose / clamp
         # 确保 ROS node 已初始化（UMIExpert 需要 ROS 环境）
