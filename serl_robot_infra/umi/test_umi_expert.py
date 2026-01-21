@@ -10,7 +10,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from serl_robot_infra.xarm_env.umi.umi_expert import UMIExpert
+from serl_robot_infra.umi.umi_expert import UMIExpert
 
 
 def main():

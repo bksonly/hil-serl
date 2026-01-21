@@ -5,7 +5,7 @@ from typing import Optional
 import threading
 from pynput import keyboard
 
-from serl_robot_infra.xarm_env.umi.umi_expert import UMIExpert
+from serl_robot_infra.umi.umi_expert import UMIExpert
 import gymnasium as gym
 
 

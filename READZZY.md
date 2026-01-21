@@ -1,5 +1,5 @@
 ## 数采
-cd serl_robot_infra/xarm_env/umi
+cd serl_robot_infra/umi
 
 cd data_collector_opt
 conda create -n shucai python=3.8.0 #一定要用这个版本的python，没法兼容
@@ -9,19 +9,16 @@ cd start_process
 bash unified.launch
 python device_pairing.py #换了设备要更新config.json
 
-数据存在serl_robot_infra/xarm_env/umi/data_collector_opt/DATA，拔插头
+数据存在serl_robot_infra/umi/data_collector_opt/DATA，拔插头
 
-## 数据格式转换hdf5
-pip install pandas
-python serl_robot_infra/xarm_env/umi/raw2hdf5.py serl_robot_infra/xarm_env/umi/data_collector_opt/DATA/ serl_robot_infra/xarm_env/umi/hdf5
-以后可以跳过hdf5这一步
+## 数据格式转换pkl（直接从raw转换，跳过hdf5中间步骤，脚本里改输入输出路径）
+python serl_robot_infra/umi/raw2pkl.py
 
-## 数据格式转换pkl
-python serl_robot_infra/xarm_env/umi/convert_hdf5_to_pkl.py
-参数在脚本里改
-PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH python serl_robot_infra/xarm_env/umi/replay_pkl.py 
+## replay pkl检验
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH python serl_robot_infra/umi/replay_pkl.py 
+
 ## 标注
-PYTHONPATH=/home/ubuntu/Desktop/hil-serl   python examples/annotate_rewards_from_hdf5.py
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl   python examples/annotate_rewards_from_pkl.py
 
 ## 分类器训练
 source /opt/ros/noetic/setup.bash
@@ -86,7 +83,7 @@ pip install -e serl_robot_infra
 
 ## 遥操作所需环境
 
-cd serl_robot_infra/xarm_env/umi/start_process
+cd serl_robot_infra/umi/start_process
 
 ### ROS1 noetic安装
 
@@ -149,6 +146,6 @@ bash pairing_process.sh
 source ~/catkin_ws/devel/setup.bash 写入.bashrc
 pip install pynput
 
-PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH python serl_robot_infra/xarm_env/umi/umi_teleop.py
+PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH python serl_robot_infra/umi/umi_teleop.py
 
 pip install keyboard

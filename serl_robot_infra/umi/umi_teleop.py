@@ -15,7 +15,7 @@ if project_root not in sys.path:
 
 from pynput import keyboard
 
-from serl_robot_infra.xarm_env.umi.umi_expert import UMIExpert
+from serl_robot_infra.umi.umi_expert import UMIExpert
 from serl_robot_infra.xarm_env.BestMan_Xarm.RoboticsToolBox.Bestman_real_xarm6 import (
     Bestman_Real_Xarm6
 )

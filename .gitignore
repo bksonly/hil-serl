@@ -63,3 +63,9 @@ demo_ckpt/
 
 serl_robot_infra/xarm_env/umi/hdf5/
 serl_robot_infra/xarm_env/umi/data_collector_opt/DATA
+
+serl_robot_infra/umi/hdf5/
+serl_robot_infra/umi/data_collector_opt/DATA
+
+DATAraw/
+demo_data/
