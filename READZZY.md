@@ -1,6 +1,5 @@
 ## 数采
 cd serl_robot_infra/umi
-
 cd data_collector_opt
 conda create -n shucai python=3.8.0 #一定要用这个版本的python，没法兼容
 pip install -r requirements.txt
@@ -55,11 +54,11 @@ PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH \
 python examples/train_rlpd.py \
   --exp_name=umi_pick \
   --learner \
-  --demo_path=/home/ubuntu/Desktop/hil-serl/demo_data/pick_parallel.pkl \
+  --demo_path=/home/ubuntu/Desktop/hil-serl/demo_data/unplug.pkl \
   --checkpoint_path=/home/ubuntu/Desktop/hil-serl/demo_ckpt \
   --debug=True
 
-
+source ~/catkin_ws/devel/setup.bash
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH
 python examples/train_rlpd.py \
   --exp_name=umi_pick \
@@ -104,7 +103,7 @@ sudo apt -y install ros-noetic-ddynamic-reconfigure
 
 ### rostopic发布
 
-bash  unified_launcher.sh --no-vive
+bash  unified_launcher.sh 
 
 /rosout
 /rosout_agg
@@ -149,3 +148,11 @@ pip install pynput
 PYTHONPATH=/home/ubuntu/Desktop/hil-serl:$PYTHONPATH python serl_robot_infra/umi/umi_teleop.py
 
 pip install keyboard
+
+### 在线rl人类干预所需环境
+多usb
+cd serl_robot_infra/umi/start_process
+sudo -E bash multi-support.sh
+
+filter_unified_launcher.sh
+默认filter-by-config，首次使用需要--no-filter，然后运行bash pairing_process.sh，默认no vive，要启用需要--vive

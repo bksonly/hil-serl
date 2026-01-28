@@ -1,5 +1,6 @@
 import gymnasium as gym
 import numpy as np
+import cv2
 import time
 from typing import Optional
 import threading
@@ -21,15 +22,66 @@ class MultiCameraBinaryRewardClassifierWrapper(gym.Wrapper):
 
     def compute_reward(self, obs):
         if self.reward_classifier_func is not None:
-            return self.reward_classifier_func(obs)
-        return 0
+            result = self.reward_classifier_func(obs)
+            # 支持返回 (reward, prob) 或只返回 reward
+            if isinstance(result, tuple):
+                return result  # (reward, prob)
+            else:
+                return result, None  # (reward, None)
+        return 0, None
 
     def step(self, action):
         start_time = time.time()
         obs, rew, done, truncated, info = self.env.step(action)
-        rew = self.compute_reward(obs)
+        rew, prob = self.compute_reward(obs)
         done = done or bool(rew)
         info["succeed"] = bool(rew)
+        if prob is not None:
+            # 调试：确保prob有值
+            if not hasattr(self, '_debug_printed'):
+                print(f"[Reward Classifier] Prob display enabled, prob={prob:.3f}")
+                self._debug_printed = True
+            info["classifier_prob"] = prob  # 将prob传递到info中
+            
+            # 直接从 obs 中获取图像并显示 prob
+            if "image" in obs:
+                img = obs["image"]
+                
+                # 调试：打印图像信息
+                if not hasattr(self, '_img_debug_printed'):
+                    print(f"[Reward Classifier] Image shape: {img.shape if img is not None else 'None'}, dtype: {img.dtype if img is not None else 'None'}")
+                    self._img_debug_printed = True
+                
+                # 检查图像是否有效
+                if img is None or img.size == 0:
+                    print(f"[Reward Classifier] Warning: Image is None or empty")
+                    return obs, rew, done, truncated, info
+                
+                img = img.copy()
+                
+                # 去掉 batch 维度（如果存在）
+                if len(img.shape) == 4:
+                    img = img[0]  # 从 (1, H, W, C) 变为 (H, W, C)
+                
+                # 确保是 uint8 格式
+                if img.dtype != np.uint8:
+                    img = np.clip(img, 0, 255).astype(np.uint8)
+                
+                # 转换为 BGR 用于 OpenCV 显示
+                if len(img.shape) == 3 and img.shape[2] == 3:
+                    display_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                else:
+                    display_img = img.copy()
+                
+                # 根据概率设置颜色：绿色（高）到红色（低）
+                color = (0, int(255 * prob), int(255 * (1 - prob)))  # BGR格式
+                text = f"Prob: {prob:.3f}"
+                cv2.putText(display_img, text, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 
+                           0.6, color, 2, cv2.LINE_AA)
+                cv2.namedWindow('Reward Classifier', cv2.WINDOW_NORMAL)
+                cv2.imshow('Reward Classifier', display_img)
+                cv2.waitKey(1)
+        
         if self.target_hz is not None:
             time.sleep(max(0, 1 / self.target_hz - (time.time() - start_time)))
         return obs, rew, done, truncated, info

@@ -44,7 +44,7 @@ flags.DEFINE_string("frame_source", "mp4", "RGB 数据来源 (mp4/mkv)")
 flags.DEFINE_integer("downsample_stride", 3, "对 timestamps.csv 进行下采样的步长")
 flags.DEFINE_integer("image_size", 128, "输出图像尺寸，保持与原 pkl 一致")
 flags.DEFINE_list("action_scale", [0.015, 0.1, 1.0], "动作归一化尺度 [xyz_m, rot_rad, gripper]")
-flags.DEFINE_integer("num_workers", 8, "并行处理 session 的进程数")
+flags.DEFINE_integer("num_workers", 16, "并行处理 session 的进程数")
 
 
 @dataclass

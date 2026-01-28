@@ -54,7 +54,7 @@ class XArmEnvConfig:
     POS_FREQUENCY: int = 3  # Hz
     SERVO_FREQUENCY: int = 50  # Hz
     # Camera: simple OpenCV VideoCapture port
-    CAMERA_PORT: int = 1
+    CAMERA_PORT: int = 2
 
     # Action scaling: [xyz_scale_m, rot_scale_rad, gripper_scale]
     ACTION_SCALE: np.ndarray = np.array([0.015, 0.1, 1.0], dtype=np.float32)
@@ -173,7 +173,10 @@ class XArmEnv(gym.Env):
         terminated = False  # no terminal condition from reward yet
         truncated = self.episode_steps >= self.max_episode_length
         info: Dict = {"succeed": False}
-
+        
+        # 保存 classifier_prob 用于显示（如果有的话，会在 wrapper 中设置）
+        # 这里先初始化，实际值会在 MultiCameraBinaryRewardClassifierWrapper 中更新
+        
         return obs, reward, terminated, truncated, info
 
     def close(self):

@@ -33,7 +33,7 @@ class TrainConfig(DefaultTrainingConfig):
     random_steps = 0
     
     # RL training parameters
-    max_steps = 2000
+    max_steps = 6000
     training_starts = 10000  # Minimum buffer size before starting training
     batch_size = 1024
     cta_ratio = 2  # Critic-to-actor update ratio
@@ -71,7 +71,8 @@ class TrainConfig(DefaultTrainingConfig):
                 # classifier_func(obs) 通常返回 shape (B, 1) 或 (B,) 的 logit，这里取第一个标量
                 logit = jnp.asarray(classifier_func(obs)).reshape(-1)[0]
                 prob = float(sigmoid(logit))
-                return int(prob > 0.75)
+                # 返回 (reward, prob) 元组，便于显示
+                return int(prob > 0.75), prob
 
             env = MultiCameraBinaryRewardClassifierWrapper(env, reward_func)
         
